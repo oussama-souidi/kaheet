@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "732904051672",
+    "project_id": "kaheet-aea21",
+    "storage_bucket": "kaheet-aea21.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:732904051672:android:74d080cd0f4744911218ad",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB7IHYNGUoaJqiudhlraUo1a-IFzpJ-Ws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
