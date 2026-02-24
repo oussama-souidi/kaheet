@@ -1,7 +1,109 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:equatable/equatable.dart';
 import 'package:uuid/uuid.dart';
 import '../models/session.dart';
 import '../utils/constants.dart';
+
+// Model classes
+class SessionParticipant extends Equatable {
+  final String userId;
+  final String sessionId;
+  final DateTime joinedAt;
+  final int currentScore;
+  final List<String> answers;
+  final bool isActive;
+  final int correctAnswers;
+
+  const SessionParticipant({
+    required this.userId,
+    required this.sessionId,
+    required this.joinedAt,
+    required this.currentScore,
+    required this.answers,
+    required this.isActive,
+    required this.correctAnswers,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'userId': userId,
+      'sessionId': sessionId,
+      'joinedAt': joinedAt.toString(),
+      'currentScore': currentScore,
+      'answers': answers,
+      'isActive': isActive,
+      'correctAnswers': correctAnswers,
+    };
+  }
+
+  factory SessionParticipant.fromJson(Map<String, dynamic> json) {
+    return SessionParticipant(
+      userId: json['userId'] ?? '',
+      sessionId: json['sessionId'] ?? '',
+      joinedAt: DateTime.parse(json['joinedAt'] ?? DateTime.now().toString()),
+      currentScore: json['currentScore'] ?? 0,
+      answers: List<String>.from(json['answers'] ?? []),
+      isActive: json['isActive'] ?? true,
+      correctAnswers: json['correctAnswers'] ?? 0,
+    );
+  }
+
+  @override
+  List<Object> get props => [userId, sessionId, currentScore, correctAnswers];
+}
+
+class QuestionResponse extends Equatable {
+  final String sessionId;
+  final String questionId;
+  final String userId;
+  final String selectedAnswer;
+  final bool isCorrect;
+  final int responseTime;
+  final DateTime timestamp;
+
+  const QuestionResponse({
+    required this.sessionId,
+    required this.questionId,
+    required this.userId,
+    required this.selectedAnswer,
+    required this.isCorrect,
+    required this.responseTime,
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'sessionId': sessionId,
+      'questionId': questionId,
+      'userId': userId,
+      'selectedAnswer': selectedAnswer,
+      'isCorrect': isCorrect,
+      'responseTime': responseTime,
+      'timestamp': timestamp.toString(),
+    };
+  }
+
+  factory QuestionResponse.fromJson(Map<String, dynamic> json) {
+    return QuestionResponse(
+      sessionId: json['sessionId'] ?? '',
+      questionId: json['questionId'] ?? '',
+      userId: json['userId'] ?? '',
+      selectedAnswer: json['selectedAnswer'] ?? '',
+      isCorrect: json['isCorrect'] ?? false,
+      responseTime: json['responseTime'] ?? 0,
+      timestamp: DateTime.parse(json['timestamp'] ?? DateTime.now().toString()),
+    );
+  }
+
+  @override
+  List<Object> get props => [
+    sessionId,
+    questionId,
+    userId,
+    selectedAnswer,
+    isCorrect,
+  ];
+}
 
 /// Firebase service for managing quiz sessions
 class SessionService {
@@ -200,8 +302,8 @@ class SessionService {
         });
   }
 
-  /// Submit answer to a question
-  Future<void> submitAnswer({
+  /// Submit single answer to a question
+  Future<void> submitSingleAnswer({
     required String sessionId,
     required String questionId,
     required String userId,
@@ -330,6 +432,30 @@ class SessionService {
           .get();
 
       return snapshot.docs.map((doc) => Session.fromJson(doc.data())).toList();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Submit complete quiz (all answers) - used at the end of quiz
+  Future<void> submitAnswer({
+    required String sessionId,
+    required String studentId,
+    required List<String?> answers,
+    required int score,
+  }) async {
+    try {
+      // Update participant's final score
+      await _firestore
+          .collection(AppConstants.collectionSessionParticipants)
+          .doc(sessionId)
+          .collection('participants')
+          .doc(studentId)
+          .update({
+            'answers': answers,
+            'currentScore': score,
+            'isActive': false,
+          });
     } catch (e) {
       rethrow;
     }

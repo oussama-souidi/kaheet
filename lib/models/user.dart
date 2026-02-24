@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// User model representing a professor or student
 class User extends Equatable {
@@ -49,24 +50,64 @@ class User extends Equatable {
       'name': name,
       'role': role,
       'avatarUrl': avatarUrl,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
   }
 
   /// Create user from Firestore JSON
   factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      id: json['id'] as String,
-      email: json['email'] as String,
-      name: json['name'] as String,
-      role: json['role'] as String,
-      avatarUrl: json['avatarUrl'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
-          : null,
-    );
+    try {
+      // Safely get all fields with type checking
+      final id = json['id'];
+      final email = json['email'];
+      final name = json['name'];
+      final role = json['role'];
+      final avatarUrl = json['avatarUrl'];
+      final createdAtValue = json['createdAt'];
+      final updatedAtValue = json['updatedAt'];
+
+      if (id is! String ||
+          email is! String ||
+          name is! String ||
+          role is! String) {
+        throw FormatException('Invalid user data types');
+      }
+
+      // Handle createdAt
+      DateTime parsedCreatedAt;
+      if (createdAtValue is Timestamp) {
+        parsedCreatedAt = createdAtValue.toDate();
+      } else if (createdAtValue is String) {
+        parsedCreatedAt = DateTime.parse(createdAtValue);
+      } else if (createdAtValue is DateTime) {
+        parsedCreatedAt = createdAtValue;
+      } else {
+        parsedCreatedAt = DateTime.now();
+      }
+
+      // Handle updatedAt
+      DateTime? parsedUpdatedAt;
+      if (updatedAtValue is Timestamp) {
+        parsedUpdatedAt = updatedAtValue.toDate();
+      } else if (updatedAtValue is String) {
+        parsedUpdatedAt = DateTime.parse(updatedAtValue);
+      } else if (updatedAtValue is DateTime) {
+        parsedUpdatedAt = updatedAtValue;
+      }
+
+      return User(
+        id: id,
+        email: email,
+        name: name,
+        role: role,
+        avatarUrl: avatarUrl is String ? avatarUrl : null,
+        createdAt: parsedCreatedAt,
+        updatedAt: parsedUpdatedAt,
+      );
+    } catch (e) {
+      rethrow;
+    }
   }
 
   /// Check if user is a professor

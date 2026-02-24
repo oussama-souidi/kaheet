@@ -50,38 +50,38 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: 'YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    authDomain: 'YOUR_AUTH_DOMAIN',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
-    measurementId: 'YOUR_MEASUREMENT_ID',
+    apiKey: 'AIzaSyAB7IHYNGUoaJqiudhlraUo1a-IFzpJ-Ws',
+    appId: '1:732904051672:web:74d080cd0f4744911218ad',
+    messagingSenderId: '732904051672',
+    projectId: 'kaheet-aea21',
+    authDomain: 'kaheet-aea21.firebaseapp.com',
+    storageBucket: 'kaheet-aea21.firebasestorage.app',
+    measurementId: null,
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'YOUR_ANDROID_API_KEY',
-    appId: 'YOUR_ANDROID_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyAB7IHYNGUoaJqiudhlraUo1a-IFzpJ-Ws',
+    appId: '1:732904051672:android:74d080cd0f4744911218ad',
+    messagingSenderId: '732904051672',
+    projectId: 'kaheet-aea21',
+    storageBucket: 'kaheet-aea21.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_iOS_API_KEY',
-    appId: 'YOUR_iOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
-    iosBundleId: 'com.example.flutter-application-1',
+    apiKey: 'AIzaSyAkUcczWAbOKDpLkWDSYrHndtMG8FfxBd8',
+    appId: '1:732904051672:ios:d490fb1f3902ee3b1218ad',
+    messagingSenderId: '732904051672',
+    projectId: 'kaheet-aea21',
+    storageBucket: 'kaheet-aea21.firebasestorage.app',
+    iosBundleId: 'com.example.flutterApplication1',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'YOUR_macOS_API_KEY',
-    appId: 'YOUR_macOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
-    iosBundleId: 'com.example.flutter-application-1',
+    apiKey: 'AIzaSyAkUcczWAbOKDpLkWDSYrHndtMG8FfxBd8',
+    appId: '1:732904051672:ios:d490fb1f3902ee3b1218ad',
+    messagingSenderId: '732904051672',
+    projectId: 'kaheet-aea21',
+    storageBucket: 'kaheet-aea21.firebasestorage.app',
+    iosBundleId: 'com.example.flutterApplication1',
   );
 }

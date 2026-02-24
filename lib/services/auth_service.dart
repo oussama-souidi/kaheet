@@ -86,7 +86,12 @@ class AuthService {
         throw Exception('User data not found');
       }
 
-      return User.fromJson(userDoc.data()!);
+      final data = userDoc.data();
+      if (data == null) {
+        throw Exception('User data is empty');
+      }
+
+      return User.fromJson(data);
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
     }
@@ -97,10 +102,15 @@ class AuthService {
     try {
       final userDoc = await _firestore.collection('users').doc(uid).get();
       if (userDoc.exists) {
-        return User.fromJson(userDoc.data()!);
+        final data = userDoc.data();
+        if (data == null) {
+          return null;
+        }
+        return User.fromJson(data);
       }
       return null;
     } catch (e) {
+      print('Error getting user: $e');
       rethrow;
     }
   }
@@ -108,10 +118,18 @@ class AuthService {
   /// Stream of current user data
   Stream<User?> getUserStream(String uid) {
     return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
-      if (snapshot.exists) {
-        return User.fromJson(snapshot.data()!);
+      try {
+        if (snapshot.exists) {
+          final data = snapshot.data();
+          if (data != null) {
+            return User.fromJson(data);
+          }
+        }
+        return null;
+      } catch (e) {
+        print('Error in getUserStream: $e');
+        return null;
       }
-      return null;
     });
   }
 
@@ -125,7 +143,7 @@ class AuthService {
       final updates = <String, dynamic>{
         'name': ?name,
         'avatarUrl': ?avatarUrl,
-        'updatedAt': DateTime.now().toIso8601String(),
+        'updatedAt': Timestamp.now(),
       };
 
       await _firestore.collection('users').doc(uid).update(updates);

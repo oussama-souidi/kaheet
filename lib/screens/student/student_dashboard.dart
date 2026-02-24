@@ -163,16 +163,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   void _handleJoinSession() {
-    final sessionCode = _sessionCodeController.text.trim();
-    if (sessionCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a session code')),
-      );
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Joining session feature coming soon!')),
-    );
+    Navigator.pushNamed(context, AppConstants.routeJoinSession);
   }
 
   Future<void> _handleLogout() async {

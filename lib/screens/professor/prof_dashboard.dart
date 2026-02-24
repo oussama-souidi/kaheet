@@ -77,10 +77,9 @@ class _ProfessorDashboardState extends State<ProfessorDashboard> {
                   // Create Quiz button
                   ElevatedButton.icon(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Create Quiz screen coming soon!'),
-                        ),
+                      Navigator.pushNamed(
+                        context,
+                        AppConstants.routeCreateQuiz,
                       );
                     },
                     icon: const Icon(Icons.add),
@@ -94,10 +93,9 @@ class _ProfessorDashboardState extends State<ProfessorDashboard> {
                   // Host Session button
                   ElevatedButton.icon(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Host Session screen coming soon!'),
-                        ),
+                      Navigator.pushNamed(
+                        context,
+                        AppConstants.routeHostSession,
                       );
                     },
                     icon: const Icon(Icons.play_circle),
