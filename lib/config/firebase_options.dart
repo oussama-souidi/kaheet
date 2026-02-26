@@ -50,13 +50,13 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAB7IHYNGUoaJqiudhlraUo1a-IFzpJ-Ws',
-    appId: '1:732904051672:web:74d080cd0f4744911218ad',
+    apiKey: 'AIzaSyBnkBVZ0KTPtbf257jJjXV5R2xaDEk7DHo',
+    appId: '1:732904051672:web:a5e9a6f28b93cfff1218ad',
     messagingSenderId: '732904051672',
     projectId: 'kaheet-aea21',
     authDomain: 'kaheet-aea21.firebaseapp.com',
     storageBucket: 'kaheet-aea21.firebasestorage.app',
-    measurementId: null,
+    measurementId: 'G-7CR5V7JLEP',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
