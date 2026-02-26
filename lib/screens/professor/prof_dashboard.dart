@@ -3,172 +3,423 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../utils/constants.dart';
+import '../../services/quiz_service.dart';
+import '../../models/quiz.dart';
 
-/// Professor dashboard for quiz management and session hosting
-class ProfessorDashboard extends StatefulWidget {
+/// Professor dashboard - Kahoot-style with quiz stream list
+class ProfessorDashboard extends StatelessWidget {
   const ProfessorDashboard({super.key});
 
   @override
-  State<ProfessorDashboard> createState() => _ProfessorDashboardState();
-}
-
-class _ProfessorDashboardState extends State<ProfessorDashboard> {
-  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final firstName = auth.currentUser?.name.split(' ').first ?? 'Professor';
+    final professorId = auth.currentUser?.id ?? '';
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Professor Dashboard'),
-        elevation: 0,
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _handleLogout),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Welcome section
-            Container(
-              padding: const EdgeInsets.all(AppTheme.paddingL),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.primaryColor,
-                    AppTheme.primaryColor.withOpacity(0.7),
-                  ],
+      backgroundColor: AppTheme.surfaceLight,
+      body: CustomScrollView(
+        slivers: [
+          // ── Hero App bar ─────────────────────────────────────
+          SliverAppBar(
+            expandedHeight: 180,
+            pinned: true,
+            backgroundColor: AppTheme.primaryColor,
+            automaticallyImplyLeading: false,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.logout, color: Colors.white),
+                onPressed: () => _handleLogout(context),
+              ),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.heroGradient,
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Consumer<AuthProvider>(
-                    builder: (context, auth, _) {
-                      return Text(
-                        'Welcome, ${auth.currentUser?.name ?? "Professor"}!',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Manage quizzes and host live sessions',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-            // Action buttons
-            Padding(
-              padding: const EdgeInsets.all(AppTheme.paddingL),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Quick Actions',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: AppTheme.paddingM),
-                  // Create Quiz button
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pushNamed(
-                        context,
-                        AppConstants.routeCreateQuiz,
-                      );
-                    },
-                    icon: const Icon(Icons.add),
-                    label: const Text('Create New Quiz'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.paddingM),
-                  // Host Session button
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pushNamed(
-                        context,
-                        AppConstants.routeHostSession,
-                      );
-                    },
-                    icon: const Icon(Icons.play_circle),
-                    label: const Text('Host Live Session'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: AppTheme.secondaryColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // My Quizzes section
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTheme.paddingL,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Your Quizzes',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: AppTheme.paddingM),
-                  // Placeholder - replace with QuizService stream
-                  Container(
-                    padding: const EdgeInsets.all(AppTheme.paddingL),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: AppTheme.textSecondary.withOpacity(0.3),
-                      ),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusL),
-                    ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.quiz,
-                          size: 50,
-                          color: AppTheme.textSecondary.withOpacity(0.5),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No quizzes yet',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: AppTheme.textSecondary),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Create your first quiz to get started',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: AppTheme.textSecondary.withOpacity(0.7),
+                        Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(14),
                               ),
+                              child: const Center(
+                                child: Text(
+                                  '👩‍🏫',
+                                  style: TextStyle(fontSize: 24),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Hey, $firstName! 👋',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Ready to host a quiz?',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.75,
+                                      ),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        // Quick action chips
+                        Row(
+                          children: [
+                            _actionChip(
+                              context,
+                              icon: Icons.add_circle,
+                              label: 'New Quiz',
+                              onTap: () => Navigator.pushNamed(
+                                context,
+                                AppConstants.routeCreateQuiz,
+                              ),
+                              color: AppTheme.hotPink,
+                            ),
+                            const SizedBox(width: 10),
+                            _actionChip(
+                              context,
+                              icon: Icons.play_circle_filled,
+                              label: 'Host Session',
+                              onTap: () => Navigator.pushNamed(
+                                context,
+                                AppConstants.routeHostSession,
+                              ),
+                              color: AppTheme.answerGreen,
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-            const SizedBox(height: AppTheme.paddingXL),
+          ),
+
+          // ── Section title ─────────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+            sliver: SliverToBoxAdapter(
+              child: Text(
+                'Your Quizzes',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+          ),
+
+          // ── Quiz list ─────────────────────────────────────────
+          if (professorId.isEmpty)
+            const SliverToBoxAdapter(child: SizedBox())
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: StreamBuilder<List<Quiz>>(
+                stream: QuizService().getQuizzesByProfessorStream(professorId),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SliverToBoxAdapter(
+                      child: Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(40),
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return SliverToBoxAdapter(
+                      child: _emptyState(
+                        context,
+                        emoji: '⚠️',
+                        title: 'Oops!',
+                        subtitle: 'Could not load quizzes.',
+                      ),
+                    );
+                  }
+                  final quizzes = snapshot.data ?? [];
+                  if (quizzes.isEmpty) {
+                    return SliverToBoxAdapter(
+                      child: _emptyState(
+                        context,
+                        emoji: '📝',
+                        title: 'No quizzes yet',
+                        subtitle: 'Tap "New Quiz" to create your first one!',
+                      ),
+                    );
+                  }
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _QuizCard(quiz: quizzes[index]),
+                      childCount: quizzes.length,
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () =>
+            Navigator.pushNamed(context, AppConstants.routeCreateQuiz),
+        backgroundColor: AppTheme.hotPink,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          'New Quiz',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionChip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: Colors.white),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _handleLogout() async {
+  Widget _emptyState(
+    BuildContext context, {
+    required String emoji,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+        border: Border.all(color: const Color(0xFFE8D5FF), width: 1.5),
+      ),
+      child: Column(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 48)),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleLogout(BuildContext context) async {
     final authProvider = context.read<AuthProvider>();
     await authProvider.signOut();
-    if (mounted) {
+    if (context.mounted) {
       Navigator.of(context).pushReplacementNamed(AppConstants.routeLogin);
     }
+  }
+}
+
+class _QuizCard extends StatelessWidget {
+  final Quiz quiz;
+  const _QuizCard({required this.quiz});
+
+  static const List<Color> _cardColors = [
+    Color(0xFF46178F),
+    Color(0xFF1368CE),
+    Color(0xFF26890C),
+    Color(0xFFD89E00),
+    Color(0xFFE21B3C),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorIndex = quiz.title.codeUnits.first % _cardColors.length;
+    final color = _cardColors[colorIndex];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Color accent
+          Container(
+            width: 8,
+            height: 80,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(AppTheme.radiusL),
+                bottomLeft: Radius.circular(AppTheme.radiusL),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    quiz.title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppTheme.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _badge(
+                        '${quiz.questions.length} Q',
+                        Icons.help_outline,
+                        color,
+                      ),
+                      const SizedBox(width: 8),
+                      _badge(
+                        '${quiz.totalPoints} pts',
+                        Icons.star_outline,
+                        AppTheme.answerYellow,
+                      ),
+                      const SizedBox(width: 8),
+                      _badge(
+                        quiz.isPublished ? 'Live' : 'Draft',
+                        quiz.isPublished ? Icons.check_circle : Icons.edit,
+                        quiz.isPublished
+                            ? AppTheme.answerGreen
+                            : AppTheme.textSecondary,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Host button
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: ElevatedButton(
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppConstants.routeHostSession),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                minimumSize: const Size(60, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                ),
+              ),
+              child: const Text(
+                'Host',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _badge(String label, IconData icon, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 }

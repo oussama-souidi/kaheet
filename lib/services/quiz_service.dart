@@ -27,7 +27,7 @@ class QuizService {
   }) async {
     try {
       final quizId = const Uuid().v4();
-      final totalPoints = questions.fold(0, (sum, q) => sum + q.points);
+      final totalPoints = questions.fold(0, (acc, q) => acc + q.points);
 
       final quiz = Quiz(
         id: quizId,
@@ -153,7 +153,7 @@ class QuizService {
         final updatedQuestions = [...quiz.questions, question];
         final newTotalPoints = updatedQuestions.fold(
           0,
-          (sum, q) => sum + q.points,
+          (total, q) => total + q.points,
         );
 
         await _firestore
@@ -181,7 +181,7 @@ class QuizService {
 
         final newTotalPoints = updatedQuestions.fold(
           0,
-          (sum, q) => sum + q.points,
+          (total, q) => total + q.points,
         );
 
         await _firestore
@@ -209,7 +209,7 @@ class QuizService {
 
         final newTotalPoints = updatedQuestions.fold(
           0,
-          (sum, q) => sum + q.points,
+          (total, q) => total + q.points,
         );
 
         await _firestore

@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/theme.dart';
-import 'package:flutter_application_1/models/session.dart';
-
 import 'package:flutter_application_1/providers/auth_provider.dart';
 import 'package:flutter_application_1/services/session_service.dart';
 import 'package:flutter_application_1/services/quiz_service.dart';
 import 'package:flutter_application_1/screens/student/quiz_taking_screen.dart';
 
-/// Join Session Screen for students to join live quiz sessions
+/// Join Session screen — Kahoot-style large game PIN entry
 class JoinSessionScreen extends StatefulWidget {
   const JoinSessionScreen({super.key});
 
@@ -17,22 +16,20 @@ class JoinSessionScreen extends StatefulWidget {
 }
 
 class _JoinSessionScreenState extends State<JoinSessionScreen> {
-  final _sessionCodeController = TextEditingController();
+  final _pinController = TextEditingController();
   bool _isJoining = false;
-  Session? _joinedSession;
 
   @override
   void dispose() {
-    _sessionCodeController.dispose();
+    _pinController.dispose();
     super.dispose();
   }
 
   Future<void> _joinSession() async {
-    final sessionCode = _sessionCodeController.text.trim().toUpperCase();
-
-    if (sessionCode.isEmpty) {
+    final pin = _pinController.text.trim().toUpperCase();
+    if (pin.length < 4) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter session code')),
+        const SnackBar(content: Text('Please enter a valid game PIN')),
       );
       return;
     }
@@ -42,253 +39,216 @@ class _JoinSessionScreenState extends State<JoinSessionScreen> {
     try {
       final authProvider = context.read<AuthProvider>();
       final studentId = authProvider.currentUser?.id ?? '';
+      if (studentId.isEmpty) throw Exception('Not authenticated');
 
-      if (studentId.isEmpty) {
-        throw Exception('Student ID not found');
-      }
-
-      // Get the session
-      final session = await SessionService().getSession(sessionCode);
+      // Use PIN-based lookup ← fixed bug
+      final session = await SessionService().getSessionByPin(pin);
       if (session == null) {
-        throw Exception(
-          'Session not found. Please check the code and try again.',
-        );
+        throw Exception('No active session found with PIN "$pin".');
       }
 
-      // Join the session
       await SessionService().joinSession(
-        sessionId: sessionCode,
+        sessionId: session.id,
         userId: studentId,
       );
 
-      // Get the quiz
       final quiz = await QuizService().getQuiz(session.quizId);
-      if (quiz == null) {
-        throw Exception('Quiz not found');
-      }
-
-      setState(() {
-        _joinedSession = session;
-      });
+      if (quiz == null) throw Exception('Quiz not found');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Joined session successfully!'),
-            backgroundColor: Colors.green,
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => QuizTakingScreen(
+              session: session,
+              quiz: quiz,
+              studentId: studentId,
+            ),
           ),
         );
-
-        // Navigate to quiz taking screen after a short delay
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    QuizTakingScreen(session: session, quiz: quiz),
-              ),
-            );
-          }
-        });
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: AppTheme.answerRed,
           ),
         );
       }
     } finally {
-      setState(() => _isJoining = false);
+      if (mounted) setState(() => _isJoining = false);
     }
-  }
-
-  void _leaveSession() {
-    setState(() => _joinedSession = null);
-    _sessionCodeController.clear();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_joinedSession != null) {
-      return _buildSessionJoined();
-    }
-
-    return _buildJoinForm();
-  }
-
-  Widget _buildJoinForm() {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Join Session'),
-        backgroundColor: AppTheme.primaryColor,
-      ),
-      body: SingleChildScrollView(
-        child: Container(
-          height: MediaQuery.of(context).size.height,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [AppTheme.primaryColor.withOpacity(0.1), Colors.white],
-            ),
-          ),
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+        child: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Icon
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.login,
-                  size: 50,
-                  color: AppTheme.primaryColor,
+              // ── Back button ─────────────────────────────
+              Align(
+                alignment: Alignment.topLeft,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
                 ),
               ),
-              const SizedBox(height: 32),
-              // Title
+              const Spacer(),
+              // ── Logo + headline ─────────────────────────
+              const Text('🎮', style: TextStyle(fontSize: 56)),
+              const SizedBox(height: 16),
+              const Text(
+                'Enter Game PIN!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
               Text(
-                'Join a Live Session',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  'Enter the session code provided by your professor',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
+                'Ask your teacher for the PIN',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
                 ),
               ),
-              const SizedBox(height: 48),
-              // Input field
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _sessionCodeController,
-                      textAlign: TextAlign.center,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(
-                        hintText: 'Enter 6-digit code',
-                        hintStyle: const TextStyle(fontSize: 24),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(
-                            color: AppTheme.primaryColor,
-                            width: 2,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(
-                            color: AppTheme.primaryColor,
-                            width: 2,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 20,
-                        ),
-                      ),
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 8,
-                      ),
-                      maxLength: 6,
-                    ),
-                    const SizedBox(height: 32),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isJoining ? null : _joinSession,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _isJoining
-                            ? const SizedBox(
-                                height: 24,
-                                width: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : const Text(
-                                'Join Session',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 48),
-              // Info box
+              const SizedBox(height: 40),
+              // ── PIN card ─────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Container(
-                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue[200]!, width: 1),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusXXL),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 30,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
-                  child: Row(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
                     children: [
-                      Icon(Icons.info, color: Colors.blue[600]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'How to join:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue[800],
+                      // PIN input
+                      TextField(
+                        controller: _pinController,
+                        textAlign: TextAlign.center,
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[A-Za-z0-9]'),
+                          ),
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 10,
+                          color: AppTheme.textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '······',
+                          hintStyle: TextStyle(
+                            fontSize: 36,
+                            color: Colors.grey.shade300,
+                            letterSpacing: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusL,
+                            ),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE0D0FF),
+                              width: 2,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusL,
+                            ),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE0D0FF),
+                              width: 2,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusL,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primaryColor,
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 18,
+                          ),
+                        ),
+                        onSubmitted: (_) => _joinSession(),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: _isJoining ? null : _joinSession,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.hotPink,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.radiusL,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '1. Ask your professor for the session code\n2. Enter the 6-digit code above\n3. Start answering questions!',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue[700],
-                              ),
-                            ),
-                          ],
+                          ),
+                          child: _isJoining
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  "Let's Go!",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 17,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+              const Spacer(flex: 2),
+              // ── Color dots ───────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _dot(AppTheme.answerRed, '▲'),
+                  const SizedBox(width: 10),
+                  _dot(AppTheme.answerBlue, '◆'),
+                  const SizedBox(width: 10),
+                  _dot(AppTheme.answerYellow, '●'),
+                  const SizedBox(width: 10),
+                  _dot(AppTheme.answerGreen, '■'),
+                ],
+              ),
+              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -296,49 +256,18 @@ class _JoinSessionScreenState extends State<JoinSessionScreen> {
     );
   }
 
-  Widget _buildSessionJoined() {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Session Joined'),
-        backgroundColor: Colors.green,
+  Widget _dot(Color color, String symbol) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.green[100],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.check_circle,
-                size: 60,
-                color: Colors.green[700],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Ready to Start!',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'You have joined the session.\nWaiting for the quiz to begin...',
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _leaveSession,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Leave Session'),
-            ),
-          ],
+      child: Center(
+        child: Text(
+          symbol,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
         ),
       ),
     );

@@ -4,150 +4,199 @@ import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../utils/constants.dart';
 
-/// Student dashboard for joining sessions and viewing history
-class StudentDashboard extends StatefulWidget {
+/// Student dashboard — simplified, Kahoot-style
+class StudentDashboard extends StatelessWidget {
   const StudentDashboard({super.key});
 
   @override
-  State<StudentDashboard> createState() => _StudentDashboardState();
-}
-
-class _StudentDashboardState extends State<StudentDashboard> {
-  final _sessionCodeController = TextEditingController();
-
-  @override
-  void dispose() {
-    _sessionCodeController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final firstName = auth.currentUser?.name.split(' ').first ?? 'Student';
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Student Dashboard'),
-        elevation: 0,
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _handleLogout),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Welcome section
-            Container(
-              padding: const EdgeInsets.all(AppTheme.paddingL),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.secondaryColor,
-                    AppTheme.secondaryColor.withOpacity(0.7),
-                  ],
+      backgroundColor: AppTheme.surfaceLight,
+      body: CustomScrollView(
+        slivers: [
+          // ── Hero App Bar ─────────────────────────────────
+          SliverAppBar(
+            expandedHeight: 200,
+            pinned: true,
+            backgroundColor: AppTheme.answerBlue,
+            automaticallyImplyLeading: false,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.logout, color: Colors.white),
+                onPressed: () => _handleLogout(context),
+              ),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF1368CE), Color(0xFF0A3D8F)],
+                  ),
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Center(
+                            child: Text('🎓', style: TextStyle(fontSize: 26)),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Hey, $firstName! 🎯',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Join a quiz and compete!',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+            ),
+          ),
+
+          // ── Join section ─────────────────────────────────
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Consumer<AuthProvider>(
-                    builder: (context, auth, _) {
-                      return Text(
-                        'Hi, ${auth.currentUser?.name.split(' ').first ?? 'Student'}!',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
                   Text(
-                    'Join a quiz session and compete with classmates',
-                    style: Theme.of(
+                    'Join a Game',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Big join card
+                  GestureDetector(
+                    onTap: () => Navigator.pushNamed(
                       context,
-                    ).textTheme.bodyLarge?.copyWith(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-            // Join session section
-            Padding(
-              padding: const EdgeInsets.all(AppTheme.paddingL),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Join a Quiz',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: AppTheme.paddingM),
-                  TextField(
-                    controller: _sessionCodeController,
-                    decoration: InputDecoration(
-                      hintText: 'Enter session code',
-                      labelText: 'Session Code',
-                      prefixIcon: const Icon(Icons.code),
+                      AppConstants.routeJoinSession,
                     ),
-                    textCapitalization: TextCapitalization.characters,
-                  ),
-                  const SizedBox(height: AppTheme.paddingM),
-                  ElevatedButton.icon(
-                    onPressed: _handleJoinSession,
-                    icon: const Icon(Icons.play_circle_outline),
-                    label: const Text('Join Session'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: AppTheme.secondaryColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 0),
-            // Quiz History section
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTheme.paddingL,
-                vertical: AppTheme.paddingL,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Recent Quizzes',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: AppTheme.paddingM),
-                  // Placeholder - replace with SessionService stream
-                  Container(
-                    padding: const EdgeInsets.all(AppTheme.paddingL),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: AppTheme.textSecondary.withOpacity(0.3),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [AppTheme.primaryColor, AppTheme.accentColor],
+                        ),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Center(
+                              child: Text('🎮', style: TextStyle(fontSize: 30)),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Enter Game PIN',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                'Tap to join a live session',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          const Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    'Recent Activity',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Empty state for now
+                  Container(
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+                      border: Border.all(
+                        color: const Color(0xFFE8D5FF),
+                        width: 1.5,
+                      ),
                     ),
                     child: Column(
                       children: [
-                        Icon(
-                          Icons.history,
-                          size: 50,
-                          color: AppTheme.textSecondary.withOpacity(0.5),
-                        ),
+                        const Text('🏆', style: TextStyle(fontSize: 44)),
                         const SizedBox(height: 12),
                         Text(
-                          'No quiz history yet',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: AppTheme.textSecondary),
+                          'No games yet',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(color: AppTheme.textPrimary),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         Text(
-                          'Join a session to get started',
+                          'Join a session to see your results here',
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: AppTheme.textSecondary.withOpacity(0.7),
-                              ),
+                              ?.copyWith(color: AppTheme.textSecondary),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -155,21 +204,16 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 ],
               ),
             ),
-            const SizedBox(height: AppTheme.paddingXL),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  void _handleJoinSession() {
-    Navigator.pushNamed(context, AppConstants.routeJoinSession);
-  }
-
-  Future<void> _handleLogout() async {
+  void _handleLogout(BuildContext context) async {
     final authProvider = context.read<AuthProvider>();
     await authProvider.signOut();
-    if (mounted) {
+    if (context.mounted) {
       Navigator.of(context).pushReplacementNamed(AppConstants.routeLogin);
     }
   }

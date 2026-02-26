@@ -110,7 +110,6 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('Error getting user: $e');
       rethrow;
     }
   }
@@ -127,7 +126,6 @@ class AuthService {
         }
         return null;
       } catch (e) {
-        print('Error in getUserStream: $e');
         return null;
       }
     });
@@ -140,10 +138,11 @@ class AuthService {
     String? avatarUrl,
   }) async {
     try {
+      // Build the updates map only with non-null values
       final updates = <String, dynamic>{
-        'name': ?name,
-        'avatarUrl': ?avatarUrl,
         'updatedAt': Timestamp.now(),
+        if (name != null) 'name': name,
+        if (avatarUrl != null) 'avatarUrl': avatarUrl,
       };
 
       await _firestore.collection('users').doc(uid).update(updates);

@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/theme.dart';
 import 'package:flutter_application_1/models/quiz.dart';
 import 'package:flutter_application_1/models/session.dart';
 import 'package:flutter_application_1/services/session_service.dart';
+import 'dart:math' as math;
 
-/// Live Quiz Taking Screen for students to answer questions
+/// Live Quiz Taking Screen — Kahoot-style 4-color immersive UI
 class QuizTakingScreen extends StatefulWidget {
   final Session session;
   final Quiz quiz;
+  final String studentId;
 
   const QuizTakingScreen({
     required this.session,
     required this.quiz,
+    required this.studentId,
     super.key,
   });
 
@@ -19,448 +23,463 @@ class QuizTakingScreen extends StatefulWidget {
   State<QuizTakingScreen> createState() => _QuizTakingScreenState();
 }
 
-class _QuizTakingScreenState extends State<QuizTakingScreen> {
+class _QuizTakingScreenState extends State<QuizTakingScreen>
+    with TickerProviderStateMixin {
   late List<String?> _selectedAnswers;
   int _currentQuestionIndex = 0;
-  bool _isSubmitting = false;
   int _score = 0;
   bool _quizCompleted = false;
   int _timeRemaining = 0;
-  late Stream<int> _timerStream;
+  Timer? _timer;
+  bool _answered = false;
+  DateTime? _questionStartTime;
+
+  // Animation controllers
+  late AnimationController _pulseController;
+  late AnimationController _answerRevealController;
+
+  static const _colors = [
+    AppTheme.answerRed,
+    AppTheme.answerBlue,
+    AppTheme.answerYellow,
+    AppTheme.answerGreen,
+  ];
+  static const _symbols = ['▲', '◆', '●', '■'];
 
   @override
   void initState() {
     super.initState();
     _selectedAnswers = List<String?>.filled(widget.quiz.questions.length, null);
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+    _answerRevealController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
     _startTimer();
   }
 
   void _startTimer() {
+    _timer?.cancel();
+    _answered = false;
+    _answerRevealController.reset();
     final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
     _timeRemaining = currentQuestion.timeLimit;
+    _questionStartTime = DateTime.now();
 
-    _timerStream = Stream.periodic(const Duration(seconds: 1), (count) {
-      _timeRemaining--;
-      if (_timeRemaining <= 0) {
-        _nextQuestion();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
       }
-      return _timeRemaining;
+      setState(() {
+        _timeRemaining--;
+        if (_timeRemaining <= 0) {
+          timer.cancel();
+          if (!_answered) {
+            // Auto-advance: time ran out, no answer
+            _handleTimeOut();
+          }
+        }
+      });
+    });
+  }
+
+  void _handleTimeOut() {
+    setState(() => _answered = true);
+    _answerRevealController.forward();
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) _goToNextOrSubmit();
     });
   }
 
   void _selectAnswer(String answer) {
+    if (_answered) return; // Already answered
+    _timer?.cancel();
+
+    final responseTime = _questionStartTime != null
+        ? DateTime.now().difference(_questionStartTime!).inMilliseconds
+        : 0;
+
     setState(() {
       _selectedAnswers[_currentQuestionIndex] = answer;
+      _answered = true;
+    });
+
+    _answerRevealController.forward();
+
+    // Submit single answer to Firestore
+    final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
+    final isCorrect =
+        answer.toLowerCase() == currentQuestion.correctAnswer.toLowerCase();
+    if (isCorrect) {
+      _score += currentQuestion.points;
+    }
+    SessionService().submitSingleAnswer(
+      sessionId: widget.session.id,
+      questionId: currentQuestion.id,
+      userId: widget.studentId,
+      answer: answer,
+      isCorrect: isCorrect,
+      responseTime: responseTime,
+      pointsEarned: isCorrect ? currentQuestion.points : 0,
+    );
+
+    // Wait 2s then advance
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) _goToNextOrSubmit();
     });
   }
 
-  void _nextQuestion() {
+  void _goToNextOrSubmit() {
     if (_currentQuestionIndex < widget.quiz.questions.length - 1) {
       setState(() {
         _currentQuestionIndex++;
-        _startTimer();
       });
+      _startTimer();
     } else {
       _submitQuiz();
     }
   }
 
-  void _previousQuestion() {
-    if (_currentQuestionIndex > 0) {
-      setState(() {
-        _currentQuestionIndex--;
-        _startTimer();
-      });
-    }
-  }
-
   Future<void> _submitQuiz() async {
-    setState(() => _isSubmitting = true);
-
     try {
-      // Calculate score
-      int score = 0;
-      for (int i = 0; i < widget.quiz.questions.length; i++) {
-        final question = widget.quiz.questions[i];
-        if (_selectedAnswers[i]?.toUpperCase() ==
-            question.correctAnswer.toUpperCase()) {
-          score += question.points;
-        }
-      }
-
-      setState(() {
-        _score = score;
-        _quizCompleted = true;
-      });
-
-      // Submit to session
       await SessionService().submitAnswer(
         sessionId: widget.session.id,
-        studentId: '', // Get from AuthProvider
+        studentId: widget.studentId,
         answers: _selectedAnswers,
-        score: score,
+        score: _score,
       );
+      setState(() => _quizCompleted = true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error submitting: ${e.toString()}')),
+        );
       }
-    } finally {
-      setState(() => _isSubmitting = false);
     }
   }
 
   @override
+  void dispose() {
+    _timer?.cancel();
+    _pulseController.dispose();
+    _answerRevealController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (_quizCompleted) {
-      return _buildResults();
-    }
+    if (_quizCompleted) return _buildResults();
 
     final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
+    final progress = (_currentQuestionIndex + 1) / widget.quiz.questions.length;
+    final timerPercent = _timeRemaining / currentQuestion.timeLimit;
+    final timerColor = _timeRemaining <= 5
+        ? AppTheme.answerRed
+        : _timeRemaining <= 15
+        ? AppTheme.answerYellow
+        : Colors.white;
 
-    return WillPopScope(
-      onWillPop: () async => false, // Prevent back button
+    return PopScope(
+      canPop: false,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Quiz'),
-          automaticallyImplyLeading: false,
-          backgroundColor: AppTheme.primaryColor,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: StreamBuilder<int>(
-                  stream: _timerStream,
-                  initialData: currentQuestion.timeLimit,
-                  builder: (context, snapshot) {
-                    final remaining = snapshot.data ?? 0;
-                    final color = remaining <= 10
-                        ? Colors.red
-                        : remaining <= 20
-                        ? Colors.orange
-                        : Colors.white;
-                    return Text(
-                      '${remaining}s',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    );
-                  },
+        backgroundColor: AppTheme.primaryColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // ── Top bar ───────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
                 ),
-              ),
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            // Progress bar
-            Container(
-              height: 8,
-              color: Colors.grey[200],
-              child: LinearProgressIndicator(
-                value:
-                    (_currentQuestionIndex + 1) / widget.quiz.questions.length,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  AppTheme.primaryColor,
-                ),
-              ),
-            ),
-            // Question counter
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.grey[50],
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Question ${_currentQuestionIndex + 1}/${widget.quiz.questions.length}',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    '${currentQuestion.points} points',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Question content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text(
-                      currentQuestion.questionText,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                    // Score
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.star, color: Colors.amber, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$_score pts',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 32),
-                    if (currentQuestion.type == 'multiple_choice')
-                      _buildMultipleChoice(currentQuestion)
-                    else if (currentQuestion.type == 'true_false')
-                      _buildTrueFalse(currentQuestion)
-                    else
-                      _buildShortAnswer(currentQuestion),
+                    const Spacer(),
+                    // Circular countdown
+                    SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CustomPaint(
+                            size: const Size(52, 52),
+                            painter: _TimerArcPainter(
+                              progress: timerPercent,
+                              color: timerColor,
+                            ),
+                          ),
+                          Text(
+                            '$_timeRemaining',
+                            style: TextStyle(
+                              color: timerColor,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    // Question counter
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${_currentQuestionIndex + 1} / ${widget.quiz.questions.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-            // Navigation buttons
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _currentQuestionIndex > 0
-                              ? _previousQuestion
-                              : null,
-                          child: const Text('Previous'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed:
-                              _currentQuestionIndex <
-                                  widget.quiz.questions.length - 1
-                              ? _nextQuestion
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                          ),
-                          child: const Text('Next'),
-                        ),
+              // Progress bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppTheme.hotPink,
+                    ),
+                    minHeight: 6,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // ── Question card ─────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: 100),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (_currentQuestionIndex == widget.quiz.questions.length - 1)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isSubmitting ? null : _submitQuiz,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Submit Quiz'),
-                      ),
+                  child: Text(
+                    currentQuestion.questionText,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
                     ),
-                ],
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // ── Answer tiles ──────────────────────────────
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: _buildAnswerTiles(currentQuestion),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnswerTiles(Question question) {
+    List<String> options;
+    if (question.type == 'multiple_choice') {
+      options = question.options;
+    } else if (question.type == 'true_false') {
+      options = ['True', 'False'];
+    } else {
+      // Short answer — just show a centered text indicator
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+              ),
+              child: const Text(
+                '📝 Short Answer\nAnswer recorded by your teacher',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildMultipleChoice(Question question) {
+    final isGrid = options.length == 4;
+    if (isGrid) {
+      return GridView.count(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        padding: EdgeInsets.zero,
+        childAspectRatio: 2.0,
+        children: options.asMap().entries.map((entry) {
+          return _answerButton(
+            question,
+            entry.value,
+            _colors[entry.key % 4],
+            _symbols[entry.key % 4],
+          );
+        }).toList(),
+      );
+    }
+
     return Column(
-      children: question.options.asMap().entries.map((entry) {
-        final option = entry.value;
-        final isSelected = _selectedAnswers[_currentQuestionIndex] == option;
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: GestureDetector(
-            onTap: () => _selectAnswer(option),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-                  width: isSelected ? 2 : 1,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                color: isSelected
-                    ? AppTheme.primaryColor.withOpacity(0.1)
-                    : Colors.white,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : Colors.grey[400]!,
-                        width: 2,
-                      ),
-                      color: isSelected ? AppTheme.primaryColor : null,
-                    ),
-                    child: isSelected
-                        ? const Icon(Icons.check, size: 14, color: Colors.white)
-                        : null,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(child: Text(option)),
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildTrueFalse(Question question) {
-    return Column(
-      children: ['True', 'False'].asMap().entries.map((entry) {
-        final option = entry.value;
-        final isSelected = _selectedAnswers[_currentQuestionIndex] == option;
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: GestureDetector(
-            onTap: () => _selectAnswer(option),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-                  width: isSelected ? 2 : 1,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                color: isSelected
-                    ? AppTheme.primaryColor.withOpacity(0.1)
-                    : Colors.white,
-              ),
-              child: Center(
-                child: Text(
-                  option,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? AppTheme.primaryColor : Colors.black87,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildShortAnswer(Question question) {
-    return TextField(
-      onChanged: _selectAnswer,
-      decoration: InputDecoration(
-        hintText: 'Type your answer here',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-        ),
-      ),
-      maxLines: 3,
-    );
-  }
-
-  Widget _buildResults() {
-    final totalPoints = widget.quiz.totalPoints;
-    final percentage = ((_score / totalPoints) * 100).toStringAsFixed(1);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quiz Completed'),
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.green,
-      ),
-      body: Center(
-        child: SingleChildScrollView(
+      children: options.asMap().entries.map((entry) {
+        return Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _answerButton(
+              question,
+              entry.value,
+              _colors[entry.key % 4],
+              _symbols[entry.key % 4],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _answerButton(
+    Question question,
+    String option,
+    Color color,
+    String symbol,
+  ) {
+    final isSelected = _selectedAnswers[_currentQuestionIndex] == option;
+    final isCorrect =
+        option.toLowerCase() == question.correctAnswer.toLowerCase();
+    final showReveal = _answered;
+
+    Color tileColor = color;
+    if (showReveal) {
+      if (isCorrect) {
+        tileColor = AppTheme.answerGreen;
+      } else if (isSelected && !isCorrect) {
+        tileColor = AppTheme.answerRed;
+      } else {
+        tileColor = color.withValues(alpha: 0.4);
+      }
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: tileColor,
+        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        border: showReveal && isCorrect
+            ? Border.all(color: Colors.white, width: 3)
+            : null,
+        boxShadow: !_answered
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.45),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+          onTap: _answered ? null : () => _selectAnswer(option),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
               children: [
                 Container(
-                  width: 120,
-                  height: 120,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: Colors.green[100],
-                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    Icons.check_circle,
-                    size: 60,
-                    color: Colors.green[700],
-                  ),
-                ),
-                const SizedBox(height: 32),
-                Text(
-                  'Quiz Submitted!',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Your Score',
-                        style: Theme.of(context).textTheme.titleMedium,
+                  child: Center(
+                    child: Text(
+                      showReveal && isCorrect
+                          ? '✔'
+                          : (showReveal && isSelected && !isCorrect)
+                          ? '✖'
+                          : symbol,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '$_score / $totalPoints',
-                        style: Theme.of(context).textTheme.displayMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '$percentage%',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleLarge?.copyWith(color: Colors.green),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
                     ),
                   ),
-                  child: const Text('Back to Dashboard'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    option,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -469,4 +488,183 @@ class _QuizTakingScreenState extends State<QuizTakingScreen> {
       ),
     );
   }
+
+  Widget _buildResults() {
+    final totalPoints = widget.quiz.totalPoints;
+    final percentage = totalPoints > 0
+        ? ((_score / totalPoints) * 100).toStringAsFixed(1)
+        : '0.0';
+    final isGood = double.parse(percentage) >= 60;
+
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    isGood ? '🏆' : '💪',
+                    style: const TextStyle(fontSize: 72),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isGood ? 'Fantastic!' : 'Good try!',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Container(
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusXXL),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Your Score',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '$_score',
+                          style: TextStyle(
+                            fontSize: 64,
+                            fontWeight: FontWeight.w900,
+                            color: isGood
+                                ? AppTheme.answerGreen
+                                : AppTheme.primaryColor,
+                          ),
+                        ),
+                        Text(
+                          'out of $totalPoints',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEE6FF),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: FractionallySizedBox(
+                            widthFactor: _score / math.max(totalPoints, 1),
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    AppTheme.answerBlue,
+                                    AppTheme.answerGreen,
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '$percentage%',
+                          style: TextStyle(
+                            color: isGood
+                                ? AppTheme.answerGreen
+                                : AppTheme.primaryColor,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: () =>
+                          Navigator.of(context).popUntil((r) => r.isFirst),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.hotPink,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        ),
+                      ),
+                      child: const Text(
+                        'Back to Dashboard',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Circular timer arc painter ──────────────────────────────────────────────
+class _TimerArcPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  _TimerArcPainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 4;
+
+    // Background track
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.2)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
+
+    // Foreground arc
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TimerArcPainter old) =>
+      old.progress != progress || old.color != color;
 }

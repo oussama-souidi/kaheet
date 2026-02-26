@@ -33,10 +33,19 @@ class AppConstants {
   static const String questionTypeTrueFalse = 'true_false';
   static const String questionTypeShortAnswer = 'short_answer';
 
-  // Session status
-  static const String sessionStatusActive = 'active';
+  // Session status — state machine
+  static const String sessionStatusWaiting = 'waiting'; // lobby
+  static const String sessionStatusActive =
+      'active'; // legacy / session-level active
+  static const String sessionStatusQuestionActive =
+      'question_active'; // question is live
+  static const String sessionStatusQuestionEnded =
+      'question_ended'; // results showing
   static const String sessionStatusCompleted = 'completed';
   static const String sessionStatusCancelled = 'cancelled';
+
+  // Route for edit quiz
+  static const String routeEditQuiz = '/edit-quiz';
 
   // Firestore collections
   static const String collectionUsers = 'users';
