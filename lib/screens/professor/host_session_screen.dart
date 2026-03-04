@@ -6,6 +6,7 @@ import 'package:flutter_application_1/models/session.dart';
 import 'package:flutter_application_1/providers/auth_provider.dart';
 import 'package:flutter_application_1/services/quiz_service.dart';
 import 'package:flutter_application_1/services/session_service.dart';
+import 'package:flutter_application_1/widgets/leaderboard_widget.dart';
 
 /// Host Session Screen — Kahoot-style lobby + live question presenter
 class HostSessionScreen extends StatefulWidget {
@@ -47,6 +48,8 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
         quizId: _selectedQuiz!.id,
         professorId: professorId,
       );
+      // Transition waiting → question_active so students can sync via stream
+      await SessionService().startSession(session.id);
       setState(() {
         _activeSession = session;
         _currentQuestionIndex = 0;
@@ -87,7 +90,7 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
       final newIndex = _currentQuestionIndex + 1;
       setState(() => _currentQuestionIndex = newIndex);
       // Also update Firestore so students see the new question
-      await SessionService().nextQuestion(session.id, newIndex);
+      await SessionService().startQuestion(session.id, newIndex);
     }
   }
 
@@ -96,7 +99,7 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
     if (_currentQuestionIndex > 0 && session != null) {
       final newIndex = _currentQuestionIndex - 1;
       setState(() => _currentQuestionIndex = newIndex);
-      await SessionService().nextQuestion(session.id, newIndex);
+      await SessionService().startQuestion(session.id, newIndex);
     }
   }
 
@@ -490,6 +493,8 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                         ),
                       ],
                     ),
+                  const SizedBox(height: 24),
+                  LeaderboardWidget(sessionId: session.id),
                 ],
               ),
             ),

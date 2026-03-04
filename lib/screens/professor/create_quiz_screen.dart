@@ -120,7 +120,7 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
           questions: _questions,
-          totalPoints: _questions.fold(0, (a, q) => a + q.points),
+          totalPoints: _questions.fold<int>(0, (a, q) => a + q.points),
         );
         await QuizService().updateQuiz(updated);
         _showSnack('🎉 Quiz updated!', AppTheme.answerGreen);
@@ -310,13 +310,13 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
 
   Widget _questionCard(int index) {
     final question = _questions[index];
-    const _colors = [
+    const colors = [
       AppTheme.answerRed,
       AppTheme.answerBlue,
       AppTheme.answerYellow,
       AppTheme.answerGreen,
     ];
-    final color = _colors[index % 4];
+    final color = colors[index % 4];
 
     return Container(
       key: ValueKey(question.id),
@@ -390,8 +390,9 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
           ),
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'edit')
+              if (v == 'edit') {
                 _openAddQuestion(initial: question, editIndex: index);
+              }
               if (v == 'delete') _deleteQuestion(index);
             },
             itemBuilder: (_) => const [

@@ -1,87 +1,62 @@
-// TODO: Generate this file using FlutterFire CLI
-// Run: `flutterfire configure --project=your-project-id`
-// Or configure manually with your Firebase project settings
-
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
-
-// Helper to determine if running on web
-const bool kIsWeb = bool.fromEnvironment('dart.library.js_util');
-
-// Helper to get target platform at runtime
-TargetPlatform get defaultTargetPlatform {
-  if (kIsWeb) return TargetPlatform.android; // Default for web
-  if (Platform.isAndroid) return TargetPlatform.android;
-  if (Platform.isIOS) return TargetPlatform.iOS;
-  if (Platform.isMacOS) return TargetPlatform.macOS;
-  if (Platform.isWindows) return TargetPlatform.windows;
-  if (Platform.isLinux) return TargetPlatform.linux;
-  throw UnsupportedError('Unknown platform');
-}
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       return web;
     }
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return android;
-      case TargetPlatform.iOS:
-        return ios;
-      case TargetPlatform.macOS:
-        return macos;
-      case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      default:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions are not supported for this platform.',
-        );
+    if (Platform.isAndroid) return android;
+    if (Platform.isIOS) return ios;
+    if (Platform.isMacOS) return macos;
+    if (Platform.isWindows) {
+      throw UnsupportedError(
+        'DefaultFirebaseOptions have not been configured for Windows.',
+      );
     }
+    if (Platform.isLinux) {
+      throw UnsupportedError(
+        'DefaultFirebaseOptions have not been configured for Linux.',
+      );
+    }
+    throw UnsupportedError('Unknown platform');
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBnkBVZ0KTPtbf257jJjXV5R2xaDEk7DHo',
-    appId: '1:732904051672:web:a5e9a6f28b93cfff1218ad',
-    messagingSenderId: '732904051672',
-    projectId: 'kaheet-aea21',
-    authDomain: 'kaheet-aea21.firebaseapp.com',
-    storageBucket: 'kaheet-aea21.firebasestorage.app',
-    measurementId: 'G-7CR5V7JLEP',
+  static FirebaseOptions get web => FirebaseOptions(
+    apiKey: dotenv.get('FIREBASE_WEB_API_KEY'),
+    appId: dotenv.get('FIREBASE_WEB_APP_ID'),
+    messagingSenderId: dotenv.get('FIREBASE_WEB_MESSAGING_SENDER_ID'),
+    projectId: dotenv.get('FIREBASE_WEB_PROJECT_ID'),
+    authDomain: dotenv.get('FIREBASE_WEB_AUTH_DOMAIN'),
+    storageBucket: dotenv.get('FIREBASE_WEB_STORAGE_BUCKET'),
+    measurementId: dotenv.get('FIREBASE_WEB_MEASUREMENT_ID'),
   );
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAB7IHYNGUoaJqiudhlraUo1a-IFzpJ-Ws',
-    appId: '1:732904051672:android:74d080cd0f4744911218ad',
-    messagingSenderId: '732904051672',
-    projectId: 'kaheet-aea21',
-    storageBucket: 'kaheet-aea21.firebasestorage.app',
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: dotenv.get('FIREBASE_ANDROID_API_KEY'),
+    appId: dotenv.get('FIREBASE_ANDROID_APP_ID'),
+    messagingSenderId: dotenv.get('FIREBASE_ANDROID_MESSAGING_SENDER_ID'),
+    projectId: dotenv.get('FIREBASE_ANDROID_PROJECT_ID'),
+    storageBucket: dotenv.get('FIREBASE_ANDROID_STORAGE_BUCKET'),
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAkUcczWAbOKDpLkWDSYrHndtMG8FfxBd8',
-    appId: '1:732904051672:ios:d490fb1f3902ee3b1218ad',
-    messagingSenderId: '732904051672',
-    projectId: 'kaheet-aea21',
-    storageBucket: 'kaheet-aea21.firebasestorage.app',
-    iosBundleId: 'com.example.flutterApplication1',
+  static FirebaseOptions get ios => FirebaseOptions(
+    apiKey: dotenv.get('FIREBASE_IOS_API_KEY'),
+    appId: dotenv.get('FIREBASE_IOS_APP_ID'),
+    messagingSenderId: dotenv.get('FIREBASE_IOS_MESSAGING_SENDER_ID'),
+    projectId: dotenv.get('FIREBASE_IOS_PROJECT_ID'),
+    storageBucket: dotenv.get('FIREBASE_IOS_STORAGE_BUCKET'),
+    iosBundleId: dotenv.get('FIREBASE_IOS_BUNDLE_ID'),
   );
 
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAkUcczWAbOKDpLkWDSYrHndtMG8FfxBd8',
-    appId: '1:732904051672:ios:d490fb1f3902ee3b1218ad',
-    messagingSenderId: '732904051672',
-    projectId: 'kaheet-aea21',
-    storageBucket: 'kaheet-aea21.firebasestorage.app',
-    iosBundleId: 'com.example.flutterApplication1',
+  static FirebaseOptions get macos => FirebaseOptions(
+    apiKey: dotenv.get('FIREBASE_IOS_API_KEY'),
+    appId: dotenv.get('FIREBASE_IOS_APP_ID'),
+    messagingSenderId: dotenv.get('FIREBASE_IOS_MESSAGING_SENDER_ID'),
+    projectId: dotenv.get('FIREBASE_IOS_PROJECT_ID'),
+    storageBucket: dotenv.get('FIREBASE_IOS_STORAGE_BUCKET'),
+    iosBundleId: dotenv.get('FIREBASE_IOS_BUNDLE_ID'),
   );
 }

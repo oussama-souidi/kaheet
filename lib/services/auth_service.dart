@@ -141,8 +141,8 @@ class AuthService {
       // Build the updates map only with non-null values
       final updates = <String, dynamic>{
         'updatedAt': Timestamp.now(),
-        if (name != null) 'name': name,
-        if (avatarUrl != null) 'avatarUrl': avatarUrl,
+        'name': ?name,
+        'avatarUrl': ?avatarUrl,
       };
 
       await _firestore.collection('users').doc(uid).update(updates);

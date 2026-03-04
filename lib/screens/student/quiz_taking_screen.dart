@@ -4,6 +4,7 @@ import 'package:flutter_application_1/config/theme.dart';
 import 'package:flutter_application_1/models/quiz.dart';
 import 'package:flutter_application_1/models/session.dart';
 import 'package:flutter_application_1/services/session_service.dart';
+import 'package:flutter_application_1/widgets/leaderboard_widget.dart';
 import 'dart:math' as math;
 
 /// Live Quiz Taking Screen — Kahoot-style 4-color immersive UI
@@ -31,6 +32,7 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   bool _quizCompleted = false;
   int _timeRemaining = 0;
   Timer? _timer;
+  StreamSubscription<Session?>? _sessionSub;
   bool _answered = false;
   DateTime? _questionStartTime;
 
@@ -50,6 +52,9 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   void initState() {
     super.initState();
     _selectedAnswers = List<String?>.filled(widget.quiz.questions.length, null);
+    // Start at whatever question the professor is currently on
+    _currentQuestionIndex = widget.session.currentQuestionIndex
+        .clamp(0, widget.quiz.questions.length - 1);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -59,6 +64,26 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
       duration: const Duration(milliseconds: 500),
     );
     _startTimer();
+    _sessionSub = SessionService()
+        .getSessionStream(widget.session.id)
+        .listen(_onSessionUpdate);
+  }
+
+  void _onSessionUpdate(Session? session) {
+    if (session == null || !mounted || _quizCompleted) return;
+    // Sync question index when professor navigates
+    final newIndex = session.currentQuestionIndex.clamp(
+      0,
+      widget.quiz.questions.length - 1,
+    );
+    if (newIndex != _currentQuestionIndex) {
+      setState(() => _currentQuestionIndex = newIndex);
+      _startTimer();
+    }
+    // Session ended by professor
+    if (session.isCompleted) {
+      _submitQuiz();
+    }
   }
 
   void _startTimer() {
@@ -117,13 +142,13 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
     if (isCorrect) {
       _score += currentQuestion.points;
     }
-    SessionService().submitSingleAnswer(
+    SessionService().submitAnswer(
       sessionId: widget.session.id,
       questionId: currentQuestion.id,
       userId: widget.studentId,
       answer: answer,
       isCorrect: isCorrect,
-      responseTime: responseTime,
+      responseTimeMs: responseTime,
       pointsEarned: isCorrect ? currentQuestion.points : 0,
     );
 
@@ -145,26 +170,13 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   }
 
   Future<void> _submitQuiz() async {
-    try {
-      await SessionService().submitAnswer(
-        sessionId: widget.session.id,
-        studentId: widget.studentId,
-        answers: _selectedAnswers,
-        score: _score,
-      );
-      setState(() => _quizCompleted = true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error submitting: ${e.toString()}')),
-        );
-      }
-    }
+    setState(() => _quizCompleted = true);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _sessionSub?.cancel();
     _pulseController.dispose();
     _answerRevealController.dispose();
     super.dispose();
@@ -595,7 +607,20 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+                  // Final leaderboard
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.cardDark,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+                    ),
+                    clipBehavior: Clip.hardEdge,
+                    child: LeaderboardWidget(
+                      sessionId: widget.session.id,
+                      currentUserId: widget.studentId,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
                     height: 54,

@@ -50,6 +50,7 @@ class _JoinSessionScreenState extends State<JoinSessionScreen> {
       await SessionService().joinSession(
         sessionId: session.id,
         userId: studentId,
+        displayName: authProvider.currentUser?.name ?? 'Student',
       );
 
       final quiz = await QuizService().getQuiz(session.quizId);

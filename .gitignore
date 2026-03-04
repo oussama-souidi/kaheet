@@ -43,13 +43,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-# Firebase configuration files (contains API keys)
+# Firebase native config files (contain platform-specific keys)
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 ios/Flutter/GoogleService-Info.plist
 web/firebase-config.js
-lib/config/firebase_options.dart
+# NOTE: lib/config/firebase_options.dart is safe to commit - it reads from .env
 
-# Environment variables
+# Environment variables - NEVER commit these
 .env
 .env.local

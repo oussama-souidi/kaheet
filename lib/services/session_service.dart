@@ -57,21 +57,22 @@ class SessionService {
     return Session.fromJson(doc.data()!);
   }
 
-  /// Look up an active/waiting session by its short PIN
+  /// Look up an active/waiting session by its short PIN.
+  /// Queries by PIN only (no composite index needed), then filters status in Dart.
   Future<Session?> getSessionByPin(String pin) async {
     final snap = await _sessions
         .where('pin', isEqualTo: pin.toUpperCase())
-        .where(
-          'status',
-          whereNotIn: [
-            AppConstants.sessionStatusCompleted,
-            AppConstants.sessionStatusCancelled,
-          ],
-        )
-        .limit(1)
+        .limit(5)
         .get();
     if (snap.docs.isEmpty) return null;
-    return Session.fromJson(snap.docs.first.data());
+    for (final doc in snap.docs) {
+      final session = Session.fromJson(doc.data());
+      if (session.status != AppConstants.sessionStatusCompleted &&
+          session.status != AppConstants.sessionStatusCancelled) {
+        return session;
+      }
+    }
+    return null;
   }
 
   Stream<Session?> getSessionStream(String sessionId) => _sessions
