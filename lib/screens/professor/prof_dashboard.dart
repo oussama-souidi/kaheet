@@ -5,6 +5,7 @@ import '../../config/theme.dart';
 import '../../utils/constants.dart';
 import '../../services/quiz_service.dart';
 import '../../models/quiz.dart';
+import 'create_quiz_screen.dart';
 
 /// Professor dashboard - Kahoot-style with quiz stream list
 class ProfessorDashboard extends StatelessWidget {
@@ -376,29 +377,106 @@ class _QuizCard extends StatelessWidget {
               ),
             ),
           ),
-          // Host button
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: ElevatedButton(
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppConstants.routeHostSession),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                minimumSize: const Size(60, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+          // Action buttons
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppConstants.routeHostSession),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color,
+                  minimumSize: const Size(54, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                  ),
+                ),
+                child: const Text(
+                  'Host',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
                 ),
               ),
-              child: const Text(
-                'Host',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
+              const SizedBox(width: 4),
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'edit') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CreateQuizScreen(existingQuiz: quiz),
+                      ),
+                    );
+                  } else if (value == 'delete') {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusXL,
+                          ),
+                        ),
+                        title: const Text('Delete Quiz?'),
+                        content: Text(
+                          'Are you sure you want to delete "${quiz.title}"? This cannot be undone.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.answerRed,
+                            ),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await QuizService().deleteQuiz(quiz.id);
+                    }
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit, size: 18),
+                        SizedBox(width: 8),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, size: 18, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Delete', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                ],
+                icon: const Icon(
+                  Icons.more_vert,
+                  color: AppTheme.textSecondary,
+                  size: 20,
                 ),
               ),
-            ),
+              const SizedBox(width: 4),
+            ],
           ),
         ],
       ),

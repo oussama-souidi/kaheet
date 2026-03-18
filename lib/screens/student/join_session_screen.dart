@@ -5,7 +5,7 @@ import 'package:flutter_application_1/config/theme.dart';
 import 'package:flutter_application_1/providers/auth_provider.dart';
 import 'package:flutter_application_1/services/session_service.dart';
 import 'package:flutter_application_1/services/quiz_service.dart';
-import 'package:flutter_application_1/screens/student/quiz_taking_screen.dart';
+import 'package:flutter_application_1/screens/student/student_lobby_screen.dart';
 
 /// Join Session screen — Kahoot-style large game PIN entry
 class JoinSessionScreen extends StatefulWidget {
@@ -39,18 +39,25 @@ class _JoinSessionScreenState extends State<JoinSessionScreen> {
     try {
       final authProvider = context.read<AuthProvider>();
       final studentId = authProvider.currentUser?.id ?? '';
+      final studentName = authProvider.currentUser?.name ?? 'Student';
       if (studentId.isEmpty) throw Exception('Not authenticated');
 
-      // Use PIN-based lookup ← fixed bug
+      // Use PIN-based lookup
       final session = await SessionService().getSessionByPin(pin);
       if (session == null) {
         throw Exception('No active session found with PIN "$pin".');
       }
 
+      if (session.status != 'waiting') {
+        throw Exception(
+          'This session has already started. You cannot join now.',
+        );
+      }
+
       await SessionService().joinSession(
         sessionId: session.id,
         userId: studentId,
-        displayName: authProvider.currentUser?.name ?? 'Student',
+        displayName: studentName,
       );
 
       final quiz = await QuizService().getQuiz(session.quizId);
@@ -60,10 +67,11 @@ class _JoinSessionScreenState extends State<JoinSessionScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => QuizTakingScreen(
+            builder: (_) => StudentLobbyScreen(
               session: session,
               quiz: quiz,
               studentId: studentId,
+              studentName: studentName,
             ),
           ),
         );

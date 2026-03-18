@@ -18,10 +18,18 @@ class HostSessionScreen extends StatefulWidget {
 
 class _HostSessionScreenState extends State<HostSessionScreen> {
   late Future<List<Quiz>> _quizzesFuture;
-  Session? _activeSession;
+
+  // Phase 1: quiz selection
   Quiz? _selectedQuiz;
-  bool _isStarting = false;
+  bool _isCreatingSession = false;
+
+  // Phase 2: lobby (waiting for students)
+  Session? _lobbySession;
+
+  // Phase 3: active quiz
+  Session? _activeSession;
   int _currentQuestionIndex = 0;
+  bool _isStartingQuiz = false;
 
   @override
   void initState() {
@@ -34,24 +42,46 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
     _quizzesFuture = QuizService().getQuizzesByProfessor(professorId);
   }
 
-  Future<void> _startSession() async {
+  // ── Phase transitions ────────────────────────────────────────────────────
+
+  /// Create session in `waiting` state then go to lobby.
+  Future<void> _createSession() async {
     if (_selectedQuiz == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a quiz first')),
       );
       return;
     }
-    setState(() => _isStarting = true);
+    setState(() => _isCreatingSession = true);
     try {
       final professorId = context.read<AuthProvider>().currentUser?.id ?? '';
       final session = await SessionService().createSession(
         quizId: _selectedQuiz!.id,
         professorId: professorId,
       );
-      // Transition waiting → question_active so students can sync via stream
+      // Session stays in 'waiting' — students can now join the lobby
+      setState(() => _lobbySession = session);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+      }
+    } finally {
+      setState(() => _isCreatingSession = false);
+    }
+  }
+
+  /// Lobby → first question active (teacher presses "Start Quiz")
+  Future<void> _startQuiz() async {
+    final session = _lobbySession;
+    if (session == null) return;
+    setState(() => _isStartingQuiz = true);
+    try {
       await SessionService().startSession(session.id);
       setState(() {
         _activeSession = session;
+        _lobbySession = null;
         _currentQuestionIndex = 0;
       });
     } catch (e) {
@@ -61,7 +91,25 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
         ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
       }
     } finally {
-      setState(() => _isStarting = false);
+      setState(() => _isStartingQuiz = false);
+    }
+  }
+
+  Future<void> _cancelLobby() async {
+    final session = _lobbySession;
+    if (session == null) return;
+    try {
+      await SessionService().cancelSession(session.id);
+      setState(() {
+        _lobbySession = null;
+        _selectedQuiz = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+      }
     }
   }
 
@@ -89,7 +137,6 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
     if (_currentQuestionIndex < quiz.questions.length - 1) {
       final newIndex = _currentQuestionIndex + 1;
       setState(() => _currentQuestionIndex = newIndex);
-      // Also update Firestore so students see the new question
       await SessionService().startQuestion(session.id, newIndex);
     }
   }
@@ -103,15 +150,21 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
     }
   }
 
+  // ── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     if (_activeSession != null && _selectedQuiz != null) {
       return _buildActiveSession();
     }
+    if (_lobbySession != null && _selectedQuiz != null) {
+      return _buildLobby();
+    }
     return _buildSelectQuiz();
   }
 
-  // ── Select quiz ─────────────────────────────────────────────────────────
+  // ── Phase 1: Select Quiz ─────────────────────────────────────────────────
+
   Widget _buildSelectQuiz() {
     return Scaffold(
       appBar: AppBar(
@@ -216,10 +269,10 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                                   AppTheme.radiusM,
                                 ),
                               ),
-                              child: Center(
+                              child: const Center(
                                 child: Text(
                                   '📋',
-                                  style: const TextStyle(fontSize: 22),
+                                  style: TextStyle(fontSize: 22),
                                 ),
                               ),
                             ),
@@ -271,12 +324,9 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton.icon(
-                      onPressed: _isStarting ? null : _startSession,
-                      icon: const Icon(
-                        Icons.play_circle_filled,
-                        color: Colors.white,
-                      ),
-                      label: _isStarting
+                      onPressed: _isCreatingSession ? null : _createSession,
+                      icon: const Icon(Icons.people_alt, color: Colors.white),
+                      label: _isCreatingSession
                           ? const SizedBox(
                               height: 22,
                               width: 22,
@@ -288,7 +338,7 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                               ),
                             )
                           : const Text(
-                              'Start Session',
+                              'Create Lobby',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -308,7 +358,332 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
     );
   }
 
-  // ── Active session ───────────────────────────────────────────────────────
+  // ── Phase 2: Lobby ───────────────────────────────────────────────────────
+
+  Widget _buildLobby() {
+    final session = _lobbySession!;
+    final quiz = _selectedQuiz!;
+
+    return Scaffold(
+      backgroundColor: AppTheme.primaryColor,
+      appBar: AppBar(
+        backgroundColor: AppTheme.accentColor,
+        automaticallyImplyLeading: false,
+        title: StreamBuilder<Session?>(
+          stream: SessionService().getSessionStream(session.id),
+          builder: (context, snap) {
+            final liveSession = snap.data ?? session;
+            return Row(
+              children: [
+                const Icon(Icons.people, color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  '${liveSession.totalParticipants} player${liveSession.totalParticipants == 1 ? '' : 's'} joined',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.key, color: Colors.white, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  session.pin,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    letterSpacing: 3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // PIN display card
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    quiz.title,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Game PIN:',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    session.pin,
+                    style: TextStyle(
+                      fontSize: 42,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 8,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Share this PIN with students',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Participants list
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      'Students in lobby',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: StreamBuilder<List<SessionParticipant>>(
+                      stream: SessionService().getParticipantsStream(
+                        session.id,
+                      ),
+                      builder: (context, snap) {
+                        final participants = snap.data ?? [];
+                        if (participants.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      '⏳',
+                                      style: TextStyle(fontSize: 36),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Waiting for students to join...',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        const avatarColors = [
+                          AppTheme.answerRed,
+                          AppTheme.answerBlue,
+                          AppTheme.answerYellow,
+                          AppTheme.answerGreen,
+                          AppTheme.hotPink,
+                        ];
+
+                        return GridView.builder(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 2.0,
+                              ),
+                          itemCount: participants.length,
+                          itemBuilder: (context, index) {
+                            final p = participants[index];
+                            final color =
+                                avatarColors[index % avatarColors.length];
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radiusM,
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        p.displayName
+                                            .substring(0, 1)
+                                            .toUpperCase(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      p.displayName,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom action buttons
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            decoration: BoxDecoration(
+              color: AppTheme.cardDark,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 16,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: _isStartingQuiz ? null : _startQuiz,
+                    icon: const Icon(
+                      Icons.play_circle_filled,
+                      color: Colors.white,
+                    ),
+                    label: _isStartingQuiz
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'Start Quiz!',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.answerGreen,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton(
+                    onPressed: _cancelLobby,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white60,
+                      side: const BorderSide(color: Colors.white24),
+                    ),
+                    child: const Text('Cancel Session'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Phase 3: Active session ──────────────────────────────────────────────
+
   Widget _buildActiveSession() {
     final quiz = _selectedQuiz!;
     final session = _activeSession!;
@@ -349,7 +724,6 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
           },
         ),
         actions: [
-          // PIN display
           Container(
             margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -493,6 +867,51 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                         ),
                       ],
                     ),
+                  if (currentQuestion.type == 'short_answer')
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        border: Border.all(color: Colors.white30),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.edit_note,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '📝 Short Answer Question',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Expected answer: ${currentQuestion.correctAnswer}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Students type their answer — you grade it after.',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 24),
                   LeaderboardWidget(sessionId: session.id),
                 ],
@@ -531,17 +950,17 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
-                        onPressed: isLast ? null : _nextQuestion,
+                        onPressed: isLast ? _endSession : _nextQuestion,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isLast
-                              ? Colors.white24
+                              ? AppTheme.answerRed
                               : AppTheme.hotPink,
                           minimumSize: const Size(0, 50),
                         ),
                         child: Text(
-                          isLast ? '🏁 Last Question' : 'Next ▶',
-                          style: TextStyle(
-                            color: isLast ? Colors.white54 : Colors.white,
+                          isLast ? '🏁 End Quiz' : 'Next Question ▶',
+                          style: const TextStyle(
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -549,24 +968,26 @@ class _HostSessionScreenState extends State<HostSessionScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _endSession,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.answerRed,
-                    ),
-                    child: const Text(
-                      'End Session',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                if (!isLast) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton(
+                      onPressed: _endSession,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.answerRed,
+                      ),
+                      child: const Text(
+                        'End Session Early',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

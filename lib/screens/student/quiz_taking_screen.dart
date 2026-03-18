@@ -8,6 +8,7 @@ import 'package:flutter_application_1/widgets/leaderboard_widget.dart';
 import 'dart:math' as math;
 
 /// Live Quiz Taking Screen — Kahoot-style 4-color immersive UI
+/// Students wait for teacher to advance questions.
 class QuizTakingScreen extends StatefulWidget {
   final Session session;
   final Quiz quiz;
@@ -36,6 +37,10 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   bool _answered = false;
   DateTime? _questionStartTime;
 
+  // Short answer
+  final TextEditingController _shortAnswerController = TextEditingController();
+  bool _shortAnswerSubmitted = false;
+
   // Animation controllers
   late AnimationController _pulseController;
   late AnimationController _answerRevealController;
@@ -52,9 +57,10 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   void initState() {
     super.initState();
     _selectedAnswers = List<String?>.filled(widget.quiz.questions.length, null);
-    // Start at whatever question the professor is currently on
-    _currentQuestionIndex = widget.session.currentQuestionIndex
-        .clamp(0, widget.quiz.questions.length - 1);
+    _currentQuestionIndex = widget.session.currentQuestionIndex.clamp(
+      0,
+      widget.quiz.questions.length - 1,
+    );
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -71,15 +77,23 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
 
   void _onSessionUpdate(Session? session) {
     if (session == null || !mounted || _quizCompleted) return;
-    // Sync question index when professor navigates
+
+    // Teacher pressed Next → advance question
     final newIndex = session.currentQuestionIndex.clamp(
       0,
       widget.quiz.questions.length - 1,
     );
     if (newIndex != _currentQuestionIndex) {
-      setState(() => _currentQuestionIndex = newIndex);
+      setState(() {
+        _currentQuestionIndex = newIndex;
+        _answered = false;
+        _shortAnswerSubmitted = false;
+        _shortAnswerController.clear();
+      });
+      _answerRevealController.reset();
       _startTimer();
     }
+
     // Session ended by professor
     if (session.isCompleted) {
       _submitQuiz();
@@ -88,8 +102,6 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
 
   void _startTimer() {
     _timer?.cancel();
-    _answered = false;
-    _answerRevealController.reset();
     final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
     _timeRemaining = currentQuestion.timeLimit;
     _questionStartTime = DateTime.now();
@@ -103,8 +115,7 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
         _timeRemaining--;
         if (_timeRemaining <= 0) {
           timer.cancel();
-          if (!_answered) {
-            // Auto-advance: time ran out, no answer
+          if (!_answered && !_shortAnswerSubmitted) {
             _handleTimeOut();
           }
         }
@@ -115,13 +126,11 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   void _handleTimeOut() {
     setState(() => _answered = true);
     _answerRevealController.forward();
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) _goToNextOrSubmit();
-    });
+    // No auto-advance — student waits for teacher to press Next
   }
 
   void _selectAnswer(String answer) {
-    if (_answered) return; // Already answered
+    if (_answered) return;
     _timer?.cancel();
 
     final responseTime = _questionStartTime != null
@@ -135,7 +144,6 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
 
     _answerRevealController.forward();
 
-    // Submit single answer to Firestore
     final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
     final isCorrect =
         answer.toLowerCase() == currentQuestion.correctAnswer.toLowerCase();
@@ -151,22 +159,41 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
       responseTimeMs: responseTime,
       pointsEarned: isCorrect ? currentQuestion.points : 0,
     );
-
-    // Wait 2s then advance
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) _goToNextOrSubmit();
-    });
+    // Student stays on this question until teacher presses Next
   }
 
-  void _goToNextOrSubmit() {
-    if (_currentQuestionIndex < widget.quiz.questions.length - 1) {
-      setState(() {
-        _currentQuestionIndex++;
-      });
-      _startTimer();
-    } else {
-      _submitQuiz();
-    }
+  void _submitShortAnswer() {
+    if (_shortAnswerSubmitted) return;
+    final text = _shortAnswerController.text.trim();
+    if (text.isEmpty) return;
+
+    _timer?.cancel();
+
+    final responseTime = _questionStartTime != null
+        ? DateTime.now().difference(_questionStartTime!).inMilliseconds
+        : 0;
+
+    final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
+    final isCorrect =
+        text.toLowerCase() == currentQuestion.correctAnswer.toLowerCase();
+
+    setState(() {
+      _shortAnswerSubmitted = true;
+      _answered = true;
+      _selectedAnswers[_currentQuestionIndex] = text;
+    });
+
+    if (isCorrect) _score += currentQuestion.points;
+
+    SessionService().submitAnswer(
+      sessionId: widget.session.id,
+      questionId: currentQuestion.id,
+      userId: widget.studentId,
+      answer: text,
+      isCorrect: isCorrect,
+      responseTimeMs: responseTime,
+      pointsEarned: isCorrect ? currentQuestion.points : 0,
+    );
   }
 
   Future<void> _submitQuiz() async {
@@ -179,6 +206,7 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
     _sessionSub?.cancel();
     _pulseController.dispose();
     _answerRevealController.dispose();
+    _shortAnswerController.dispose();
     super.dispose();
   }
 
@@ -188,7 +216,9 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
 
     final currentQuestion = widget.quiz.questions[_currentQuestionIndex];
     final progress = (_currentQuestionIndex + 1) / widget.quiz.questions.length;
-    final timerPercent = _timeRemaining / currentQuestion.timeLimit;
+    final timerPercent = currentQuestion.timeLimit > 0
+        ? _timeRemaining / currentQuestion.timeLimit
+        : 0.0;
     final timerColor = _timeRemaining <= 5
         ? AppTheme.answerRed
         : _timeRemaining <= 15
@@ -246,7 +276,7 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
                           CustomPaint(
                             size: const Size(52, 52),
                             painter: _TimerArcPainter(
-                              progress: timerPercent,
+                              progress: timerPercent.toDouble(),
                               color: timerColor,
                             ),
                           ),
@@ -336,6 +366,44 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
                   child: _buildAnswerTiles(currentQuestion),
                 ),
               ),
+
+              // ── Waiting for teacher banner (shown after answering) ────
+              if (_answered)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 20,
+                  ),
+                  color: AppTheme.cardDark,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white54,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        currentQuestion.type == 'short_answer' &&
+                                _shortAnswerSubmitted
+                            ? 'Answer submitted! Waiting for teacher...'
+                            : 'Waiting for teacher to advance...',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 12),
             ],
           ),
@@ -345,32 +413,144 @@ class _QuizTakingScreenState extends State<QuizTakingScreen>
   }
 
   Widget _buildAnswerTiles(Question question) {
-    List<String> options;
-    if (question.type == 'multiple_choice') {
-      options = question.options;
-    } else if (question.type == 'true_false') {
-      options = ['True', 'False'];
-    } else {
-      // Short answer — just show a centered text indicator
-      return Center(
+    // ── Short Answer ──────────────────────────────────────────────────────────
+    if (question.type == 'short_answer') {
+      return SingleChildScrollView(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
+                color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+                border: Border.all(color: Colors.white24),
               ),
-              child: const Text(
-                '📝 Short Answer\nAnswer recorded by your teacher',
-                style: TextStyle(color: Colors.white, fontSize: 16),
-                textAlign: TextAlign.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.edit, color: Colors.white70, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Type your answer below',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _shortAnswerController,
+                    enabled: !_shortAnswerSubmitted,
+                    maxLines: 3,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Write your answer here...',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.1),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        borderSide: const BorderSide(color: Colors.white30),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        borderSide: const BorderSide(color: Colors.white30),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        borderSide: const BorderSide(
+                          color: Colors.white70,
+                          width: 2,
+                        ),
+                      ),
+                      disabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        borderSide: const BorderSide(color: Colors.white12),
+                      ),
+                      contentPadding: const EdgeInsets.all(14),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (!_shortAnswerSubmitted)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _submitShortAnswer,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.answerGreen,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusL,
+                            ),
+                          ),
+                        ),
+                        child: const Text(
+                          'Submit Answer',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.answerGreen.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        border: Border.all(color: AppTheme.answerGreen),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Answer submitted!',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
         ),
       );
+    }
+
+    // ── MCQ / True-False ──────────────────────────────────────────────────────
+    List<String> options;
+    if (question.type == 'multiple_choice') {
+      options = question.options;
+    } else {
+      options = ['True', 'False'];
     }
 
     final isGrid = options.length == 4;
