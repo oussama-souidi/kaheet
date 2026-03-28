@@ -82,6 +82,8 @@ dart pub global activate flutterfire_cli
 flutterfire configure --project=YOUR_PROJECT_ID
 ```
 
+> ⚠️ **Important:** This command auto-generates `lib/config/firebase_options.dart` containing your Firebase credentials. This file is essential for the app to connect to your Firebase project. It will be created automatically with your project's API keys, app IDs, and database URLs.
+
 4. **Install dependencies**
 ```bash
 flutter pub get
