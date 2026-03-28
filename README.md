@@ -53,7 +53,7 @@ A modern, interactive quiz application built with Flutter and Firebase. Quiz Mas
 
 <img src="images/student_dashboard.png" alt="Student Dashboard" width="250"/> <img src="images/enter_game_pin_page.png" alt="Enter Game PIN" width="250"/>
 
-<img src="images/lobby_page.png" alt="Quiz Lobby" width="250"/>
+<img src="images/lobby_page.png" alt="Quiz Lobby" width="500"/>
 
 ---
 
@@ -68,7 +68,7 @@ A modern, interactive quiz application built with Flutter and Firebase. Quiz Mas
 
 1. **Clone the repository**
 ```bash
-git clone <repository-url>
+git clone https://github.com/oussama-souidi/kaheet
 cd flutter_application_1
 ```
 
