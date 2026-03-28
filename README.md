@@ -175,7 +175,7 @@ Priority areas to build next:
 ## 💡 Highlights
 
 ### Built with ❤️
-This application was **video-coded using VS Code with GitHub Copilot Student AI plugin**, enabling rapid development with AI-assisted code generation and real-time suggestions.
+This application was **vibe-coded using VS Code with GitHub Copilot Student AI plugin**, enabling rapid development with AI-assisted code generation and real-time suggestions.
 
 ### Real-time Features
 - Live participant tracking
